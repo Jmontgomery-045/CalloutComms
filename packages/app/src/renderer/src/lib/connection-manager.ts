@@ -9,7 +9,7 @@ const env = (import.meta as { env?: Record<string, string> }).env ?? {}
 
 const SIGNAL_URL = env.VITE_SIGNAL_URL ?? 'ws://localhost:8080'
 
-const TURN_URLS  = env.VITE_TURN_URLS?.split(',')     ?? ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443']
+const TURN_URLS  = env.VITE_TURN_URLS?.split(',')     ?? ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443']
 const TURN_USER  = env.VITE_TURN_USERNAME ?? 'openrelayproject'
 const TURN_CRED  = env.VITE_TURN_CREDENTIAL ?? 'openrelayproject'
 
