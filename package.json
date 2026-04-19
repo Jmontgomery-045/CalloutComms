@@ -9,5 +9,8 @@
     "build:app": "npm run build --workspace=packages/app",
     "build:server": "npm run build --workspace=packages/server",
     "postinstall": "echo done"
+  },
+  "devDependencies": {
+    "electron": "29.0.1"
   }
 }
