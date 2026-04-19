@@ -201,7 +201,7 @@ export class ConnectionManager {
       const s = pc.connectionState
       if (s === 'connected') {
         useAppStore.getState().setContactOnline(targetId, true)
-      } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+      } else if (s === 'failed' || s === 'closed') {
         useAppStore.getState().setContactOnline(targetId, false)
         this.peers.delete(targetId); this.channels.delete(targetId)
       }

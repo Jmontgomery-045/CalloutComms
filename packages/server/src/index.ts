@@ -38,6 +38,12 @@ wss.on('connection', (ws) => {
         registeredId = msg.userId
         clients.set(msg.userId, ws)
         send(ws, { type: 'registered', userId: msg.userId })
+        // Push online presence to all other connected clients
+        for (const [clientId, clientWs] of clients) {
+          if (clientId !== msg.userId) {
+            send(clientWs, { type: 'presence', targetId: msg.userId, online: true })
+          }
+        }
         break
       }
 
@@ -63,6 +69,10 @@ wss.on('connection', (ws) => {
   const cleanup = () => {
     if (registeredId && clients.get(registeredId) === ws) {
       clients.delete(registeredId)
+      // Push offline presence to all remaining connected clients
+      for (const [, clientWs] of clients) {
+        send(clientWs, { type: 'presence', targetId: registeredId, online: false })
+      }
     }
   }
 
