@@ -1,5 +1,10 @@
 import { useAppStore, type IncomingRequest, type GroupParticipant } from '../store/app'
 
+const DEV = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
+const log = DEV
+  ? (scope: string, ...args: unknown[]) => console.log(`[callout:${scope}]`, ...args)
+  : () => {}
+
 const SIGNAL_URL =
   (import.meta as { env?: Record<string, string> }).env?.VITE_SIGNAL_URL ?? 'ws://localhost:8080'
 
@@ -88,15 +93,22 @@ export class ConnectionManager {
   // ── WebSocket ──────────────────────────────────────────────────────────────
 
   private connectWs() {
+    log('ws', 'connecting to', SIGNAL_URL)
     this.ws = new WebSocket(SIGNAL_URL)
-    this.ws.onopen = () =>
+    this.ws.onopen = () => {
+      log('ws', 'connected — registering as', this.userId)
       this.ws!.send(JSON.stringify({ type: 'register', userId: this.userId }))
+    }
     this.ws.onmessage = (e: MessageEvent) => {
       let msg: { type: string; [k: string]: unknown }
       try { msg = JSON.parse(e.data as string) } catch { return }
+      log('ws', '←', msg.type, msg)
       void this.handleSignal(msg)
     }
-    this.ws.onclose = () => this.scheduleReconnect()
+    this.ws.onclose = () => {
+      log('ws', 'closed — scheduling reconnect')
+      this.scheduleReconnect()
+    }
     this.ws.onerror = () => { /* close fires after */ }
   }
 
@@ -111,18 +123,26 @@ export class ConnectionManager {
     const store = useAppStore.getState()
     switch (msg.type) {
       case 'registered':
+        log('signal', 'registered — polling presence for', store.contacts.length, 'contacts')
         for (const c of store.contacts) this.wsRaw({ type: 'presence', targetId: c.user_id })
         break
 
       case 'presence': {
         const { targetId, online } = msg as { targetId: string; online: boolean }
         store.setContactOnline(targetId, online)
-        if (online && this.userId < targetId) await this.initiateConnection(targetId)
+        log('signal', `presence: ${targetId} is ${online ? 'ONLINE' : 'offline'}`)
+        if (online && this.userId < targetId) {
+          log('signal', `initiating connection to ${targetId} (my id is smaller)`)
+          await this.initiateConnection(targetId)
+        } else if (online) {
+          log('signal', `waiting for ${targetId} to initiate (their id is smaller)`)
+        }
         break
       }
 
       case 'relay': {
         const { fromId, payload } = msg as { fromId: string; payload: RelayPayload }
+        log('signal', `relay ← ${fromId}:`, payload.type)
         await this.handleRelay(fromId, payload)
         break
       }
@@ -172,22 +192,32 @@ export class ConnectionManager {
   // ── Messaging peers ────────────────────────────────────────────────────────
 
   private async initiateConnection(targetId: string) {
-    if (this.peers.has(targetId)) return
+    if (this.peers.has(targetId)) {
+      log('rtc', `already have peer for ${targetId}, skipping initiation`)
+      return
+    }
+    log('rtc', `creating offer → ${targetId}`)
     const pc = this.createMsgPeer(targetId)
     const dc = pc.createDataChannel('chat', { ordered: true })
     this.setupDataChannel(targetId, dc)
     const offer = await pc.createOffer()
     await pc.setLocalDescription(offer)
     this.relay(targetId, { type: 'sdp-offer', sdp: offer })
+    log('rtc', `offer sent → ${targetId}`)
   }
 
   private async handleOffer(fromId: string, sdp: RTCSessionDescriptionInit) {
-    if (this.peers.has(fromId)) return
+    if (this.peers.has(fromId)) {
+      log('rtc', `already have peer for ${fromId}, ignoring offer`)
+      return
+    }
+    log('rtc', `received offer from ${fromId} — creating answer`)
     const pc = this.createMsgPeer(fromId)
     await pc.setRemoteDescription(new RTCSessionDescription(sdp))
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
     this.relay(fromId, { type: 'sdp-answer', sdp: answer })
+    log('rtc', `answer sent → ${fromId}`)
   }
 
   private createMsgPeer(targetId: string): RTCPeerConnection {
@@ -199,6 +229,7 @@ export class ConnectionManager {
     pc.ondatachannel = (e) => this.setupDataChannel(targetId, e.channel)
     pc.onconnectionstatechange = () => {
       const s = pc.connectionState
+      log('rtc', `peer ${targetId} connection state → ${s}`)
       if (s === 'connected') {
         useAppStore.getState().setContactOnline(targetId, true)
       } else if (s === 'failed' || s === 'closed') {
@@ -214,6 +245,7 @@ export class ConnectionManager {
 
   private setupDataChannel(targetId: string, dc: RTCDataChannel) {
     dc.onopen = () => {
+      log('dc', `channel open with ${targetId} — sending profile`)
       this.channels.set(targetId, dc)
       useAppStore.getState().setChannelOpen(targetId, true)
       this.dcSend(dc, { type: 'profile', displayName: this.displayName, status: this.status })
@@ -243,6 +275,7 @@ export class ConnectionManager {
       await this.handleDcMsg(targetId, msg)
     }
     dc.onclose = () => {
+      log('dc', `channel closed with ${targetId}`)
       this.channels.delete(targetId)
       this.chunkBuffers.delete(targetId)
       useAppStore.getState().setChannelOpen(targetId, false)
@@ -973,6 +1006,7 @@ export class ConnectionManager {
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   private relay(targetId: string, payload: RelayPayload) {
+    log('signal', `relay → ${targetId}:`, payload.type)
     this.wsRaw({ type: 'relay', targetId, payload })
   }
 
