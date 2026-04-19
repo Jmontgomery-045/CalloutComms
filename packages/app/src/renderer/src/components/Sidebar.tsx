@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAppStore } from '../store/app'
+import { getConnectionManager } from '../lib/connection-manager'
 import Identicon from './Identicon'
 import AddContactModal from './AddContactModal'
 
@@ -10,6 +11,7 @@ export default function Sidebar({ onSettings }: Props) {
   const contacts = useAppStore((s) => s.contacts)
   const selectedContactId = useAppStore((s) => s.selectedContactId)
   const selectContact = useAppStore((s) => s.selectContact)
+  const unreadCounts = useAppStore((s) => s.unreadCounts)
   const [copied, setCopied] = useState(false)
   const [showAddModal, setShowAddModal] = useState(false)
 
@@ -89,6 +91,7 @@ export default function Sidebar({ onSettings }: Props) {
                   key={c.user_id}
                   contact={c}
                   selected={selectedContactId === c.user_id}
+                  unread={unreadCounts[c.user_id] ?? 0}
                   onSelect={() => selectContact(c.user_id)}
                 />
               ))}
@@ -103,6 +106,7 @@ export default function Sidebar({ onSettings }: Props) {
                   key={c.user_id}
                   contact={c}
                   selected={selectedContactId === c.user_id}
+                  unread={unreadCounts[c.user_id] ?? 0}
                   onSelect={() => selectContact(c.user_id)}
                 />
               ))}
@@ -121,12 +125,25 @@ type Contact = ReturnType<typeof useAppStore.getState>['contacts'][number]
 function ContactRow({
   contact,
   selected,
+  unread,
   onSelect,
 }: {
   contact: Contact
   selected: boolean
+  unread: number
   onSelect(): void
 }) {
+  const [hovered, setHovered] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+
+  function handleRefresh(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (refreshing) return
+    setRefreshing(true)
+    getConnectionManager()?.refreshContact(contact.user_id)
+    setTimeout(() => setRefreshing(false), 2000)
+  }
+
   return (
     <button
       style={{
@@ -134,6 +151,8 @@ function ContactRow({
         background: selected ? 'var(--bg-hover)' : 'transparent',
       }}
       onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
       <div style={{ position: 'relative' }}>
         <Identicon userId={contact.user_id} size={32} />
@@ -145,7 +164,13 @@ function ContactRow({
         />
       </div>
       <div style={styles.contactInfo}>
-        <span style={styles.contactName}>{contact.nickname}</span>
+        <span style={{
+          ...styles.contactName,
+          fontWeight: unread > 0 ? 700 : 500,
+          color: unread > 0 ? 'var(--text-primary)' : undefined,
+        }}>
+          {contact.nickname}
+        </span>
         <span style={styles.contactStatus}>
           {contact.status
             ? contact.status
@@ -154,6 +179,25 @@ function ContactRow({
               : 'Offline'}
         </span>
       </div>
+      {unread > 0 && !hovered && (
+        <span style={styles.unreadBadge}>
+          {unread > 99 ? '99+' : unread}
+        </span>
+      )}
+      {hovered && (
+        <span
+          style={{
+            ...styles.refreshBtn,
+            opacity: refreshing ? 0.4 : 1,
+            transform: refreshing ? 'rotate(360deg)' : 'none',
+            transition: refreshing ? 'transform 0.6s linear' : 'none',
+          }}
+          onClick={handleRefresh}
+          title="Refresh contact"
+        >
+          ↻
+        </span>
+      )}
     </button>
   )
 }
@@ -300,5 +344,31 @@ const styles: Record<string, React.CSSProperties> = {
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
+  },
+  unreadBadge: {
+    flexShrink: 0,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    background: 'var(--accent)',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 700,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '0 5px',
+  },
+  refreshBtn: {
+    flexShrink: 0,
+    fontSize: 16,
+    color: 'var(--text-muted)',
+    padding: '2px 4px',
+    borderRadius: 4,
+    cursor: 'pointer',
+    lineHeight: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }

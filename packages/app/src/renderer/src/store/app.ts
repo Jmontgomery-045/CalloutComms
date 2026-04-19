@@ -79,6 +79,8 @@ type AppState = {
   contacts: Contact[]
   selectedContactId: string | null
   messages: Record<string, Message[]>
+  unreadCounts: Record<string, number>
+  channelsOpen: Set<string>
   incomingRequests: IncomingRequest[]
   call: CallState
   groupCall: GroupCallState
@@ -91,6 +93,9 @@ type AppState = {
   selectContact(userId: string | null): void
   setMessages(contactUserId: string, messages: Message[]): void
   appendMessage(contactUserId: string, message: Message): void
+  incrementUnread(contactUserId: string): void
+  clearUnread(contactUserId: string): void
+  setChannelOpen(userId: string, open: boolean): void
   pushIncomingRequest(req: IncomingRequest): void
   dismissIncomingRequest(): void
   setCallState(partial: Partial<CallState>): void
@@ -114,6 +119,8 @@ export const useAppStore = create<AppState>((set) => ({
   contacts: [],
   selectedContactId: null,
   messages: {},
+  unreadCounts: {},
+  channelsOpen: new Set<string>(),
   incomingRequests: [],
   call: IDLE_CALL,
   groupCall: IDLE_GROUP,
@@ -148,6 +155,26 @@ export const useAppStore = create<AppState>((set) => ({
         [contactUserId]: [...(s.messages[contactUserId] ?? []), message],
       },
     })),
+
+  incrementUnread: (contactUserId) =>
+    set((s) => ({
+      unreadCounts: {
+        ...s.unreadCounts,
+        [contactUserId]: (s.unreadCounts[contactUserId] ?? 0) + 1,
+      },
+    })),
+
+  clearUnread: (contactUserId) =>
+    set((s) => ({
+      unreadCounts: { ...s.unreadCounts, [contactUserId]: 0 },
+    })),
+
+  setChannelOpen: (userId, open) =>
+    set((s) => {
+      const next = new Set(s.channelsOpen)
+      open ? next.add(userId) : next.delete(userId)
+      return { channelsOpen: next }
+    }),
 
   pushIncomingRequest: (req) =>
     set((s) => ({ incomingRequests: [...s.incomingRequests, req] })),

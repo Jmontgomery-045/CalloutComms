@@ -12,8 +12,10 @@ export default function ConversationView() {
   const messages = useAppStore((s) => s.messages)
   const setMessages = useAppStore((s) => s.setMessages)
   const appendMessage = useAppStore((s) => s.appendMessage)
+  const clearUnread = useAppStore((s) => s.clearUnread)
 
   const call = useAppStore((s) => s.call)
+  const channelsOpen = useAppStore((s) => s.channelsOpen)
   const contact = contacts.find((c) => c.user_id === selectedContactId)
   const thread = selectedContactId ? (messages[selectedContactId] ?? []) : []
   const onCall = call.contactId === selectedContactId && call.status !== 'idle'
@@ -28,6 +30,7 @@ export default function ConversationView() {
     window.api.messages.get(activeProfile.id, selectedContactId).then((msgs) => {
       setMessages(selectedContactId, msgs)
     })
+    clearUnread(selectedContactId)
     if (contact?.online) {
       window.api.messages.markRead(activeProfile.id, selectedContactId)
     }
@@ -78,7 +81,8 @@ export default function ConversationView() {
     })
   }
 
-  const canSend = contact.online && input.trim().length > 0
+  const channelReady = !!selectedContactId && channelsOpen.has(selectedContactId)
+  const canSend = channelReady && input.trim().length > 0
 
   return (
     <div style={styles.root}>
@@ -150,15 +154,19 @@ export default function ConversationView() {
         <input
           style={{
             ...styles.input,
-            opacity: contact.online ? 1 : 0.5,
+            opacity: channelReady ? 1 : 0.5,
           }}
           placeholder={
-            contact.online ? `Message ${contact.nickname}…` : `${contact.nickname} is offline`
+            !contact.online
+              ? `${contact.nickname} is offline`
+              : !channelReady
+                ? 'Connecting…'
+                : `Message ${contact.nickname}…`
           }
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-          disabled={!contact.online}
+          onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && void sendMessage()}
+          disabled={!channelReady}
         />
         <button
           style={{ ...styles.sendBtn, opacity: canSend ? 1 : 0.4 }}

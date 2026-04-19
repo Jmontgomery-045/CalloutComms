@@ -22,7 +22,7 @@ type RelayPayload =
 
 type DataChannelMessage =
   // Messaging
-  | { type: 'profile'; displayName: string; status: string }
+  | { type: 'profile'; displayName: string; status: string; profilePicDataUrl?: string | null }
   | { type: 'chat'; content: string; timestamp: number }
   // 1-to-1 call
   | { type: 'call-invite' }
@@ -44,6 +44,7 @@ type DataChannelMessage =
   | { type: 'group-host-takeover'; groupId: string; newHostId: string; participants: GroupParticipant[] }
   | { type: 'group-kick'; groupId: string }
   | { type: 'group-ended'; groupId: string }
+  | { type: 'profile-request' }
 
 // ── ConnectionManager ─────────────────────────────────────────────────────────
 
@@ -211,6 +212,7 @@ export class ConnectionManager {
   private setupDataChannel(targetId: string, dc: RTCDataChannel) {
     dc.onopen = () => {
       this.channels.set(targetId, dc)
+      useAppStore.getState().setChannelOpen(targetId, true)
       this.dcSend(dc, { type: 'profile', displayName: this.displayName, status: this.status })
     }
     dc.onmessage = async (e: MessageEvent) => {
@@ -220,6 +222,7 @@ export class ConnectionManager {
     }
     dc.onclose = () => {
       this.channels.delete(targetId)
+      useAppStore.getState().setChannelOpen(targetId, false)
       useAppStore.getState().setContactOnline(targetId, false)
     }
   }
@@ -235,6 +238,13 @@ export class ConnectionManager {
           profileId: this.profileId, userId: fromId,
           displayName: msg.displayName, status: msg.status,
         })
+        if (msg.profilePicDataUrl) {
+          await window.api.contacts.saveProfilePic({
+            profileId: this.profileId, userId: fromId, dataUrl: msg.profilePicDataUrl,
+          })
+        } else if (msg.profilePicDataUrl === null) {
+          await window.api.contacts.removeProfilePic({ profileId: this.profileId, userId: fromId })
+        }
         store.setContacts(await window.api.contacts.get(this.profileId))
         break
       }
@@ -243,13 +253,16 @@ export class ConnectionManager {
           profileId: this.profileId, contactUserId: fromId,
           direction: 'received', content: msg.content, type: 'text', timestamp: msg.timestamp,
         })
+        const isSelected = store.selectedContactId === fromId
         store.appendMessage(fromId, {
           id: result.id, direction: 'received', content: msg.content,
           type: 'text', timestamp: msg.timestamp,
-          read: store.selectedContactId === fromId ? 1 : 0, reaction: null,
+          read: isSelected ? 1 : 0, reaction: null,
         })
-        if (store.selectedContactId === fromId) {
+        if (isSelected) {
           await window.api.messages.markRead(this.profileId, fromId)
+        } else {
+          store.incrementUnread(fromId)
         }
         break
       }
@@ -382,6 +395,16 @@ export class ConnectionManager {
       case 'group-ended': {
         if (msg.groupId !== store.groupCall.groupId) break
         this.teardownGroupCall(false)
+        break
+      }
+
+      case 'profile-request': {
+        const dc = this.channels.get(fromId)
+        if (!dc) break
+        const profilePicDataUrl = store.activeProfile?.profilePicPath
+          ? await window.api.identity.getProfilePicDataUrl(store.activeProfile.profilePicPath)
+          : null
+        this.dcSend(dc, { type: 'profile', displayName: this.displayName, status: this.status, profilePicDataUrl })
         break
       }
     }
@@ -884,6 +907,32 @@ export class ConnectionManager {
   updateProfile(displayName: string, status: string): void {
     this.displayName = displayName
     this.status = status
+  }
+
+  refreshContact(userId: string): void {
+    const dc = this.channels.get(userId)
+    if (dc?.readyState === 'open') {
+      // Channel is open — ask them to re-send their profile
+      this.dcSend(dc, { type: 'profile-request' })
+    } else {
+      // No open channel — re-check presence; if online this triggers reconnection
+      // which will auto-exchange profiles when the channel opens
+      this.wsRaw({ type: 'presence', targetId: userId })
+    }
+  }
+
+  async broadcastProfile(displayName: string, status: string, profilePicPath: string | null): Promise<void> {
+    this.displayName = displayName
+    this.status = status
+    const profilePicDataUrl = profilePicPath
+      ? await window.api.identity.getProfilePicDataUrl(profilePicPath)
+      : null
+    const msg: DataChannelMessage = {
+      type: 'profile', displayName, status, profilePicDataUrl,
+    }
+    for (const dc of this.channels.values()) {
+      this.dcSend(dc, msg)
+    }
   }
 
   destroy(): void {
