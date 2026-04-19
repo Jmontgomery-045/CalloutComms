@@ -18,9 +18,6 @@ export default function SettingsPanel() {
   const [exporting, setExporting] = useState(false)
   const [exportMsg, setExportMsg] = useState('')
 
-  const [typingIndicators, setTypingIndicators] = useState(
-    () => localStorage.getItem('pref:typingIndicators') !== 'false'
-  )
   const [readReceipts, setReadReceipts] = useState(
     () => localStorage.getItem('pref:readReceipts') !== 'false'
   )
@@ -105,11 +102,6 @@ export default function SettingsPanel() {
     } else {
       setExportMsg('Export cancelled.')
     }
-  }
-
-  function toggleTyping(val: boolean) {
-    setTypingIndicators(val)
-    localStorage.setItem('pref:typingIndicators', String(val))
   }
 
   function toggleReadReceipts(val: boolean) {
@@ -278,12 +270,6 @@ export default function SettingsPanel() {
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Preferences</h2>
 
-          <ToggleRow
-            label="Typing indicators"
-            description="Let contacts see when you are typing"
-            value={typingIndicators}
-            onChange={toggleTyping}
-          />
           <ToggleRow
             label="Read receipts"
             description="Let contacts know when you've read their messages"
