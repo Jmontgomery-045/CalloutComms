@@ -7,15 +7,43 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "make-icons": "node scripts/make-icons.mjs"
+    "make-icons": "node scripts/make-icons.mjs",
+    "dist": "electron-vite build && electron-builder --win"
   },
   "build": {
     "appId": "com.callout.app",
     "productName": "callout",
     "icon": "assets/icon.ico",
-    "win": { "icon": "assets/icon.ico" },
-    "mac": { "icon": "assets/icon.png" },
-    "linux": { "icon": "assets/icon.png" }
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "out/**/*",
+      "assets/icon.ico"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [{ "target": "nsis", "arch": ["x64"] }]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "shortcutName": "callout"
+    },
+    "mac": {
+      "icon": "assets/icon.png",
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }]
+    },
+    "linux": {
+      "icon": "assets/icon.png",
+      "target": ["AppImage"]
+    },
+    "publish": {
+      "provider": "github",
+      "releaseType": "release"
+    }
   },
   "dependencies": {
     "libsodium-wrappers": "^0.7.13",
