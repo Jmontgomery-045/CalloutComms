@@ -32,6 +32,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SIGNAL_URL: ${{ secrets.VITE_SIGNAL_URL }}
+          VITE_TURN_URLS: ${{ secrets.VITE_TURN_URLS }}
+          VITE_TURN_USERNAME: ${{ secrets.VITE_TURN_USERNAME }}
+          VITE_TURN_CREDENTIAL: ${{ secrets.VITE_TURN_CREDENTIAL }}
 
       - name: Add stable-named installer to release
         shell: powershell
