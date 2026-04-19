@@ -269,11 +269,15 @@ export class ConnectionManager {
   private chunkBuffers = new Map<string, Map<string, { chunks: string[]; total: number }>>()
 
   private setupDataChannel(targetId: string, dc: RTCDataChannel) {
-    dc.onopen = () => {
+    dc.onopen = async () => {
       log('dc', `channel open with ${targetId} — sending profile`)
       this.channels.set(targetId, dc)
       useAppStore.getState().setChannelOpen(targetId, true)
-      this.dcSend(dc, { type: 'profile', displayName: this.displayName, status: this.status })
+      const picPath = useAppStore.getState().activeProfile?.profilePicPath
+      const profilePicDataUrl = picPath
+        ? await window.api.identity.getProfilePicDataUrl(picPath)
+        : null
+      this.dcSend(dc, { type: 'profile', displayName: this.displayName, status: this.status, profilePicDataUrl })
     }
     dc.onmessage = async (e: MessageEvent) => {
       let raw: { __chunk?: boolean; id?: string; i?: number; total?: number; data?: string }
