@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/app'
 import AvatarCropModal from './AvatarCropModal'
+import { getConnectionManager } from '../lib/connection-manager'
 
 const STATUS_PRESETS = ['Available', 'Busy', 'Away']
 
@@ -64,25 +65,29 @@ export default function SettingsPanel() {
   async function onCropSave(dataUrl: string) {
     setCropSrc(null)
     const result = await window.api.identity.saveCroppedProfilePic(activeProfile!.id, dataUrl)
-    setActiveProfile({ ...activeProfile!, profilePicPath: result.filename, profilePicHash: result.hash })
+    const updated = { ...activeProfile!, profilePicPath: result.filename, profilePicHash: result.hash }
+    setActiveProfile(updated)
+    getConnectionManager()?.broadcastProfile(updated.displayName, updated.status, updated.profilePicPath)
   }
 
   function removeProfilePic() {
-    // Optimistic update — UI responds immediately
     const prev = activeProfile!
-    setActiveProfile({ ...prev, profilePicPath: null, profilePicHash: null })
-    // Persist to DB; revert if it somehow fails
-    window.api.identity.removeProfilePic(prev.id).catch(() => {
-      setActiveProfile(prev)
-    })
+    const updated = { ...prev, profilePicPath: null, profilePicHash: null }
+    setActiveProfile(updated)
+    window.api.identity.removeProfilePic(prev.id).catch(() => setActiveProfile(prev))
+    getConnectionManager()?.broadcastProfile(updated.displayName, updated.status, null)
   }
 
   async function saveProfile() {
     if (!displayName.trim()) return
     setSaving(true)
     setSaveMsg('')
-    await window.api.identity.updateProfile(activeProfile!.id, displayName.trim(), status.trim())
-    setActiveProfile({ ...activeProfile!, displayName: displayName.trim(), status: status.trim() })
+    const name = displayName.trim()
+    const stat = status.trim()
+    await window.api.identity.updateProfile(activeProfile!.id, name, stat)
+    const updated = { ...activeProfile!, displayName: name, status: stat }
+    setActiveProfile(updated)
+    getConnectionManager()?.broadcastProfile(name, stat, updated.profilePicPath)
     setSaving(false)
     setSaveMsg('Saved')
     setTimeout(() => setSaveMsg(''), 2000)

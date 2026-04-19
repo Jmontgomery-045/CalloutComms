@@ -62,6 +62,9 @@ const api = {
 
     removeProfilePic: (profileId: string): Promise<void> =>
       ipcRenderer.invoke('identity:remove-profile-pic', profileId),
+
+    getProfilePicDataUrl: (filename: string): Promise<string | null> =>
+      ipcRenderer.invoke('identity:get-profile-pic-data-url', filename),
   },
 
   contacts: {
@@ -85,6 +88,12 @@ const api = {
 
     block: (profileId: string, userId: string): Promise<void> =>
       ipcRenderer.invoke('contacts:block', { profileId, userId }),
+
+    saveProfilePic: (params: { profileId: string; userId: string; dataUrl: string }): Promise<{ filename: string; hash: string }> =>
+      ipcRenderer.invoke('contacts:save-profile-pic', params),
+
+    removeProfilePic: (params: { profileId: string; userId: string }): Promise<void> =>
+      ipcRenderer.invoke('contacts:remove-profile-pic', params),
   },
 
   messages: {

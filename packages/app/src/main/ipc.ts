@@ -34,6 +34,13 @@ export function registerIpcHandlers(): void {
       .run(profileId)
   })
 
+  ipcMain.handle('identity:get-profile-pic-data-url', (_e, filename: string) => {
+    const filePath = path.join(app.getPath('userData'), 'profile-pics', filename)
+    if (!fs.existsSync(filePath)) return null
+    const buf = fs.readFileSync(filePath)
+    return `data:image/png;base64,${buf.toString('base64')}`
+  })
+
   // Receives a PNG data URL from the renderer after the crop modal confirms
   ipcMain.handle('identity:save-cropped-profile-pic', (_e, { profileId, dataUrl }: { profileId: string; dataUrl: string }) => {
     const base64 = dataUrl.split(',')[1]
@@ -142,6 +149,32 @@ export function registerIpcHandlers(): void {
           'UPDATE contacts SET display_name = ?, status = ? WHERE profile_id = ? AND user_id = ?'
         )
         .run(displayName, status, profileId, userId)
+    }
+  )
+
+  ipcMain.handle(
+    'contacts:save-profile-pic',
+    (_e, { profileId, userId, dataUrl }: { profileId: string; userId: string; dataUrl: string }) => {
+      const base64 = dataUrl.split(',')[1]
+      const buf = Buffer.from(base64, 'base64')
+      const hash = crypto.createHash('sha256').update(buf).digest('hex')
+      const filename = `${hash}.png`
+      const picsDir = path.join(app.getPath('userData'), 'profile-pics')
+      if (!fs.existsSync(picsDir)) fs.mkdirSync(picsDir, { recursive: true })
+      fs.writeFileSync(path.join(picsDir, filename), buf)
+      getDb()
+        .prepare('UPDATE contacts SET profile_pic_path = ?, profile_pic_hash = ? WHERE profile_id = ? AND user_id = ?')
+        .run(filename, hash, profileId, userId)
+      return { filename, hash }
+    }
+  )
+
+  ipcMain.handle(
+    'contacts:remove-profile-pic',
+    (_e, { profileId, userId }: { profileId: string; userId: string }) => {
+      getDb()
+        .prepare('UPDATE contacts SET profile_pic_path = NULL, profile_pic_hash = NULL WHERE profile_id = ? AND user_id = ?')
+        .run(profileId, userId)
     }
   )
 
