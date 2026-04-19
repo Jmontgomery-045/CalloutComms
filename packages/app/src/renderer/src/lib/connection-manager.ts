@@ -192,9 +192,17 @@ export class ConnectionManager {
   // ── Messaging peers ────────────────────────────────────────────────────────
 
   private async initiateConnection(targetId: string) {
-    if (this.peers.has(targetId)) {
-      log('rtc', `already have peer for ${targetId}, skipping initiation`)
-      return
+    const existing = this.peers.get(targetId)
+    if (existing) {
+      const s = existing.connectionState
+      if (s === 'new' || s === 'connecting' || s === 'connected') {
+        log('rtc', `already have live peer for ${targetId} (${s}), skipping`)
+        return
+      }
+      log('rtc', `replacing dead peer for ${targetId} (was ${s})`)
+      existing.close()
+      this.peers.delete(targetId)
+      this.channels.delete(targetId)
     }
     log('rtc', `creating offer → ${targetId}`)
     const pc = this.createMsgPeer(targetId)
@@ -207,9 +215,17 @@ export class ConnectionManager {
   }
 
   private async handleOffer(fromId: string, sdp: RTCSessionDescriptionInit) {
-    if (this.peers.has(fromId)) {
-      log('rtc', `already have peer for ${fromId}, ignoring offer`)
-      return
+    const existing = this.peers.get(fromId)
+    if (existing) {
+      const s = existing.connectionState
+      if (s === 'new' || s === 'connecting' || s === 'connected') {
+        log('rtc', `already have live peer for ${fromId} (${s}), ignoring offer`)
+        return
+      }
+      log('rtc', `replacing dead peer for ${fromId} (was ${s})`)
+      existing.close()
+      this.peers.delete(fromId)
+      this.channels.delete(fromId)
     }
     log('rtc', `received offer from ${fromId} — creating answer`)
     const pc = this.createMsgPeer(fromId)
@@ -235,6 +251,10 @@ export class ConnectionManager {
       } else if (s === 'failed' || s === 'closed') {
         useAppStore.getState().setContactOnline(targetId, false)
         this.peers.delete(targetId); this.channels.delete(targetId)
+        if (s === 'failed') {
+          log('rtc', `peer ${targetId} failed — re-polling presence in 3s`)
+          setTimeout(() => this.wsRaw({ type: 'presence', targetId }), 3000)
+        }
       }
     }
     return pc
