@@ -21,9 +21,9 @@ jobs:
         working-directory: packages/app
         run: npm install
 
-      - name: Force reinstall 7zip-bin to ensure Windows binary is present
+      - name: Force reinstall native binaries for electron-builder
         working-directory: packages/app
-        run: npm install 7zip-bin --force
+        run: npm install 7zip-bin app-builder-bin --force
 
       - name: Build & publish
         working-directory: packages/app
