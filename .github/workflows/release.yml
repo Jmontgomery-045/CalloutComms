@@ -32,3 +32,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VITE_SIGNAL_URL: ${{ secrets.VITE_SIGNAL_URL }}
+
+      - name: Add stable-named installer to release
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $src = Get-ChildItem "packages\app\dist\*.exe" | Where-Object { $_.Name -notlike "*.blockmap" } | Select-Object -First 1
+          Copy-Item $src.FullName "packages\app\dist\callout-Setup.exe"
+          gh release upload $env:GITHUB_REF_NAME "packages\app\dist\callout-Setup.exe" --clobber
