@@ -5,14 +5,19 @@ const log = DEV
   ? (scope: string, ...args: unknown[]) => console.log(`[callout:${scope}]`, ...args)
   : () => {}
 
-const SIGNAL_URL =
-  (import.meta as { env?: Record<string, string> }).env?.VITE_SIGNAL_URL ?? 'ws://localhost:8080'
+const env = (import.meta as { env?: Record<string, string> }).env ?? {}
+
+const SIGNAL_URL = env.VITE_SIGNAL_URL ?? 'ws://localhost:8080'
+
+const TURN_URLS  = env.VITE_TURN_URLS?.split(',')     ?? ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turns:openrelay.metered.ca:443']
+const TURN_USER  = env.VITE_TURN_USERNAME ?? 'openrelayproject'
+const TURN_CRED  = env.VITE_TURN_CREDENTIAL ?? 'openrelayproject'
 
 const ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    // { urls: 'turn:your-server.com', username: '', credential: '' },
+    { urls: TURN_URLS, username: TURN_USER, credential: TURN_CRED },
   ],
 }
 
