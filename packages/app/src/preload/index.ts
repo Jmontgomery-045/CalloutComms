@@ -117,6 +117,12 @@ const api = {
   },
 }
 
+const updater = {
+  onReady: (cb: () => void) => ipcRenderer.on('update:ready', cb),
+  install:  (): Promise<void> => ipcRenderer.invoke('update:install'),
+}
+
 contextBridge.exposeInMainWorld('api', api)
+contextBridge.exposeInMainWorld('updater', updater)
 
 export type Api = typeof api

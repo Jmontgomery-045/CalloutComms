@@ -2,10 +2,12 @@ import { useEffect, useState } from 'react'
 
 export default function TitleBar() {
   const [maximized, setMaximized] = useState(false)
+  const [updateReady, setUpdateReady] = useState(false)
 
   useEffect(() => {
     window.api.win.isMaximized().then(setMaximized)
     window.api.win.onMaximizeChange(setMaximized)
+    window.updater.onReady(() => setUpdateReady(true))
   }, [])
 
   return (
@@ -14,6 +16,16 @@ export default function TitleBar() {
         <span style={styles.wordmark}>callout</span>
         <span style={styles.tag}>COMMS</span>
       </div>
+
+      {updateReady && (
+        <button
+          style={styles.updateBtn}
+          onClick={() => window.updater.install()}
+          title="Restart to apply update"
+        >
+          ↑ Update ready — restart
+        </button>
+      )}
 
       <div style={styles.controls}>
         <WinBtn onClick={() => window.api.win.minimize()} title="Minimise">
@@ -132,6 +144,19 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     // @ts-ignore
     WebkitAppRegion: 'no-drag',
+  },
+  updateBtn: {
+    // @ts-ignore
+    WebkitAppRegion: 'no-drag',
+    background: 'var(--accent)',
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '4px 12px',
+    borderRadius: 4,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    marginRight: 8,
   },
   btn: {
     width: 46,

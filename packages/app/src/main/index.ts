@@ -1,10 +1,11 @@
 import { app, BrowserWindow, shell, nativeImage, ipcMain, protocol } from 'electron'
 import { join, normalize } from 'path'
+import { autoUpdater } from 'electron-updater'
 import sodium from 'libsodium-wrappers'
 import { initDb } from './db'
 import { registerIpcHandlers } from './ipc'
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const icon = nativeImage.createFromPath(join(__dirname, '../../assets/icon.ico'))
   const win = new BrowserWindow({
     width: 1100,
@@ -43,6 +44,28 @@ function createWindow(): void {
   ipcMain.handle('window:maximize',     () => win.isMaximized() ? win.unmaximize() : win.maximize())
   ipcMain.handle('window:close',        () => win.close())
   ipcMain.handle('window:is-maximized', () => win.isMaximized())
+
+  return win
+}
+
+function initAutoUpdater(win: BrowserWindow): void {
+  // Don't check for updates in dev
+  if (!app.isPackaged) return
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('update-downloaded', () => {
+    win.webContents.send('update:ready')
+  })
+
+  // Check on launch, then every 4 hours
+  autoUpdater.checkForUpdates()
+  setInterval(() => autoUpdater.checkForUpdates(), 4 * 60 * 60 * 1000)
+
+  ipcMain.handle('update:install', () => {
+    autoUpdater.quitAndInstall()
+  })
 }
 
 app.whenReady().then(async () => {
@@ -56,7 +79,8 @@ app.whenReady().then(async () => {
   await sodium.ready
   await initDb()
   registerIpcHandlers()
-  createWindow()
+  const win = createWindow()
+  initAutoUpdater(win)
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
