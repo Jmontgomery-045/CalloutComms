@@ -21,9 +21,15 @@ jobs:
         working-directory: packages/app
         run: npm install
 
+      - name: Place 7za binary for electron-builder
+        shell: powershell
+        run: |
+          $dest = "node_modules\7zip-bin\win\x64"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item "C:\Program Files\7-Zip\7za.exe" "$dest\7za.exe"
+
       - name: Build & publish
         working-directory: packages/app
         run: npm run dist -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          USE_SYSTEM_7ZA: 'true'
