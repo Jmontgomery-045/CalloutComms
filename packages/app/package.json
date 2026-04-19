@@ -1,0 +1,42 @@
+{
+  "name": "p2p-app-client",
+  "version": "0.1.0",
+  "private": true,
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "make-icons": "node scripts/make-icons.mjs"
+  },
+  "build": {
+    "appId": "com.callout.app",
+    "productName": "callout",
+    "icon": "assets/icon.ico",
+    "win": { "icon": "assets/icon.ico" },
+    "mac": { "icon": "assets/icon.png" },
+    "linux": { "icon": "assets/icon.png" }
+  },
+  "dependencies": {
+    "libsodium-wrappers": "^0.7.13",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "sql.js": "^1.12.0",
+    "zustand": "^4.5.0"
+  },
+  "devDependencies": {
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/libsodium-wrappers": "^0.7.13",
+    "@types/node": "^20.11.5",
+    "@types/react": "^18.2.48",
+    "@types/react-dom": "^18.2.18",
+    "@types/sql.js": "^1.4.9",
+    "@vitejs/plugin-react": "^4.2.1",
+    "electron": "^29.0.1",
+    "electron-builder": "^24.9.1",
+    "electron-vite": "^2.0.0",
+    "png-to-ico": "^3.0.1",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}

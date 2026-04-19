@@ -1,0 +1,18 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#0f0f14"/>
+  <!-- Waveform bars — centred, 7 bars, growing then tapering -->
+  <!-- Bar 1 -->
+  <rect x="148" y="222" width="28" height="68"  rx="7" fill="#ffffff" opacity="0.2"/>
+  <!-- Bar 2 -->
+  <rect x="188" y="196" width="28" height="120" rx="7" fill="#ffffff" opacity="0.4"/>
+  <!-- Bar 3 -->
+  <rect x="228" y="168" width="28" height="176" rx="7" fill="#00e5a0" opacity="0.6"/>
+  <!-- Bar 4 (tallest) -->
+  <rect x="268" y="148" width="28" height="216" rx="7" fill="#00e5a0" opacity="0.9"/>
+  <!-- Bar 5 -->
+  <rect x="308" y="168" width="28" height="176" rx="7" fill="#00e5a0" opacity="1"/>
+  <!-- Bar 6 -->
+  <rect x="348" y="196" width="28" height="120" rx="7" fill="#00e5a0" opacity="0.5"/>
+  <!-- Bar 7 -->
+  <rect x="388" y="222" width="28" height="68"  rx="7" fill="#00e5a0" opacity="0.25"/>
+</svg>

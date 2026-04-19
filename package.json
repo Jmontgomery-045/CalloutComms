@@ -1,0 +1,13 @@
+{
+  "name": "p2p-app",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev:app": "npm run dev --workspace=packages/app",
+    "dev:server": "npm run dev --workspace=packages/server",
+    "build:app": "npm run build --workspace=packages/app",
+    "build:server": "npm run build --workspace=packages/server",
+    "postinstall": "echo done"
+  }
+}
