@@ -28,6 +28,14 @@ function createWindow(): BrowserWindow {
 
   win.on('ready-to-show', () => win.show())
 
+  // Forward renderer console messages to the terminal in dev
+  if (!app.isPackaged) {
+    win.webContents.on('console-message', (_e, level, message) => {
+      const prefix = ['log', 'warn', 'error'][level] ?? 'log'
+      console[prefix as 'log' | 'warn' | 'error'](message)
+    })
+  }
+
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url)
     return { action: 'deny' }
