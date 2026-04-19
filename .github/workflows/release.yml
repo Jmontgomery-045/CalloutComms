@@ -30,3 +30,4 @@ jobs:
         run: npm run dist -- --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SIGNAL_URL: ${{ secrets.VITE_SIGNAL_URL }}
