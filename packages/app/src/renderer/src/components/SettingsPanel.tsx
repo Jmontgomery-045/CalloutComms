@@ -263,6 +263,17 @@ export default function SettingsPanel() {
           {exportMsg && <p style={styles.exportMsg}>{exportMsg}</p>}
         </section>
 
+        {/* ── About ───────────────────────────────────────── */}
+        <section style={styles.section}>
+          <h2 style={styles.sectionTitle}>About</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>Version</span>
+            <span style={{ fontSize: 14, color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+              v{__APP_VERSION__}
+            </span>
+          </div>
+        </section>
+
         {/* ── Preferences ─────────────────────────────────── */}
         <section style={styles.section}>
           <h2 style={styles.sectionTitle}>Preferences</h2>
