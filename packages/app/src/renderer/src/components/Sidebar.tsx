@@ -154,8 +154,15 @@ function ContactRow({
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
-      <div style={{ position: 'relative' }}>
-        <Identicon userId={contact.user_id} size={32} />
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        {contact.profile_pic_path ? (
+          <img
+            src={`callout-file://${encodeURIComponent(contact.profile_pic_path)}`}
+            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+          />
+        ) : (
+          <Identicon userId={contact.user_id} size={32} />
+        )}
         <span
           style={{
             ...styles.onlineDot,

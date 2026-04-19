@@ -88,7 +88,14 @@ export default function ConversationView() {
     <div style={styles.root}>
       {/* Header */}
       <div style={styles.header}>
-        <Identicon userId={contact.user_id} size={36} />
+        {contact.profile_pic_path ? (
+          <img
+            src={`callout-file://${encodeURIComponent(contact.profile_pic_path)}`}
+            style={{ width: 36, height: 36, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+          />
+        ) : (
+          <Identicon userId={contact.user_id} size={36} />
+        )}
         <div style={styles.headerInfo}>
           <span style={styles.headerName}>{contact.nickname}</span>
           <span

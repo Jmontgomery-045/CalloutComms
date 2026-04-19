@@ -209,6 +209,9 @@ export class ConnectionManager {
     return pc
   }
 
+  // Chunk reassembly buffers: targetId -> chunkId -> { chunks, total }
+  private chunkBuffers = new Map<string, Map<string, { chunks: string[]; total: number }>>()
+
   private setupDataChannel(targetId: string, dc: RTCDataChannel) {
     dc.onopen = () => {
       this.channels.set(targetId, dc)
@@ -216,12 +219,32 @@ export class ConnectionManager {
       this.dcSend(dc, { type: 'profile', displayName: this.displayName, status: this.status })
     }
     dc.onmessage = async (e: MessageEvent) => {
+      let raw: { __chunk?: boolean; id?: string; i?: number; total?: number; data?: string }
+      try { raw = JSON.parse(e.data as string) } catch { return }
+
+      if (raw.__chunk) {
+        // Reassemble chunked message
+        if (!this.chunkBuffers.has(targetId)) this.chunkBuffers.set(targetId, new Map())
+        const byId = this.chunkBuffers.get(targetId)!
+        if (!byId.has(raw.id!)) byId.set(raw.id!, { chunks: [], total: raw.total! })
+        const entry = byId.get(raw.id!)!
+        entry.chunks[raw.i!] = raw.data!
+        if (entry.chunks.filter(Boolean).length === entry.total) {
+          byId.delete(raw.id!)
+          let msg: DataChannelMessage
+          try { msg = JSON.parse(entry.chunks.join('')) } catch { return }
+          await this.handleDcMsg(targetId, msg)
+        }
+        return
+      }
+
       let msg: DataChannelMessage
-      try { msg = JSON.parse(e.data as string) } catch { return }
+      try { msg = raw as unknown as DataChannelMessage } catch { return }
       await this.handleDcMsg(targetId, msg)
     }
     dc.onclose = () => {
       this.channels.delete(targetId)
+      this.chunkBuffers.delete(targetId)
       useAppStore.getState().setChannelOpen(targetId, false)
       useAppStore.getState().setContactOnline(targetId, false)
     }
@@ -944,6 +967,7 @@ export class ConnectionManager {
     this.teardownGroupAudio()
     this.groupPeers.forEach((pc) => pc.close())
     this.groupLocalStream?.getTracks().forEach((t) => t.stop())
+    this.chunkBuffers.clear()
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -957,7 +981,22 @@ export class ConnectionManager {
   }
 
   private dcSend(dc: RTCDataChannel, msg: DataChannelMessage) {
-    if (dc.readyState === 'open') dc.send(JSON.stringify(msg))
+    if (dc.readyState !== 'open') return
+    const json = JSON.stringify(msg)
+    const CHUNK = 64 * 1024 // 64 KB — safe for all browsers
+    if (json.length <= CHUNK) {
+      dc.send(json)
+      return
+    }
+    // Split into chunks with a simple framing protocol
+    const id = Math.random().toString(36).slice(2, 8)
+    const total = Math.ceil(json.length / CHUNK)
+    for (let i = 0; i < total; i++) {
+      dc.send(JSON.stringify({
+        __chunk: true, id, i, total,
+        data: json.slice(i * CHUNK, (i + 1) * CHUNK),
+      }))
+    }
   }
 
   private async getPublicKeyHex(): Promise<string> {
