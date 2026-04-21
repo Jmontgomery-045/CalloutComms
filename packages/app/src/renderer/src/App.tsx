@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from './store/app'
 import { initConnectionManager } from './lib/connection-manager'
+import { startIncomingRing, stopIncomingRing, startOutgoingRing, stopOutgoingRing, stopAllRings } from './lib/sounds'
 import FirstLaunch from './pages/FirstLaunch'
 import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
@@ -33,6 +34,17 @@ export default function App() {
     const cm = initConnectionManager(activeProfile)
     return () => cm.destroy()
   }, [activeProfile?.id])
+
+  // Call ringing sounds driven off call.status transitions
+  useEffect(() => {
+    const unsub = useAppStore.subscribe((s, prev) => {
+      if (s.call.status === prev.call.status) return
+      stopAllRings()
+      if (s.call.status === 'ringing') startIncomingRing()
+      else if (s.call.status === 'calling') startOutgoingRing()
+    })
+    return () => { unsub(); stopAllRings() }
+  }, [])
 
   if (profiles.length === 0 && activeProfile === null) return (
     <>

@@ -1,4 +1,5 @@
 import { useAppStore, type IncomingRequest, type GroupParticipant } from '../store/app'
+import { playMessageReceive } from './sounds'
 
 const DEV = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
 const log = DEV
@@ -348,6 +349,11 @@ export class ConnectionManager {
           await window.api.messages.markRead(this.profileId, fromId)
         } else {
           store.incrementUnread(fromId)
+        }
+        // Don't chirp during a call — the ringback/call audio is enough
+        const now = useAppStore.getState()
+        if (now.call.status === 'idle' && !now.groupCall.active) {
+          playMessageReceive()
         }
         break
       }
