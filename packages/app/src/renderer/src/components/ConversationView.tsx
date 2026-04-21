@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/app'
 import { getConnectionManager } from '../lib/connection-manager'
 import Identicon from './Identicon'
-import ActiveCallBar from './ActiveCallBar'
 import GroupCallModal from './GroupCallModal'
 
 export default function ConversationView() {
@@ -153,8 +152,6 @@ export default function ConversationView() {
         ))}
         <div ref={bottomRef} />
       </div>
-
-      <ActiveCallBar />
 
       {/* Input */}
       <div style={styles.inputArea}>

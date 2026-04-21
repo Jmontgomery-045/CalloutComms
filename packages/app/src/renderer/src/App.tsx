@@ -11,6 +11,7 @@ import SettingsPanel from './components/SettingsPanel'
 import IncomingRequestBanner from './components/IncomingRequest'
 import IncomingCall from './components/IncomingCall'
 import IncomingGroupCall from './components/IncomingGroupCall'
+import ActiveCallBar from './components/ActiveCallBar'
 
 export default function App() {
   const profiles = useAppStore((s) => s.profiles)
@@ -70,6 +71,7 @@ export default function App() {
       <IncomingRequestBanner />
       <IncomingCall />
       <IncomingGroupCall />
+      <ActiveCallBar />
     </div>
   )
 }
