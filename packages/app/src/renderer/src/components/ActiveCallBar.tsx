@@ -22,9 +22,21 @@ export default function ActiveCallBar() {
 
   // Route remote audio to the hidden <audio> element
   useEffect(() => {
-    if (audioRef.current && call.remoteStream) {
-      audioRef.current.srcObject = call.remoteStream
-    }
+    const el = audioRef.current
+    if (!el || !call.remoteStream) return
+    const tracks = call.remoteStream.getAudioTracks()
+    console.log('[callout:audio] setting srcObject — tracks=', tracks.map(t => ({ id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState })))
+    el.srcObject = call.remoteStream
+    el.muted = false
+    el.volume = 1
+    // Explicitly call play() — Electron's autoplay can silently fail on hidden elements
+    el.play()
+      .then(() => console.log('[callout:audio] play() resolved. paused=', el.paused, 'muted=', el.muted, 'volume=', el.volume, 'readyState=', el.readyState))
+      .catch((err) => console.error('[callout:audio] play() rejected:', err))
+    const logState = (ev: Event) => console.log(`[callout:audio] event=${ev.type} paused=${el.paused} currentTime=${el.currentTime} readyState=${el.readyState}`)
+    const events = ['loadedmetadata', 'canplay', 'play', 'playing', 'pause', 'stalled', 'suspend', 'error', 'emptied']
+    events.forEach(e => el.addEventListener(e, logState))
+    return () => events.forEach(e => el.removeEventListener(e, logState))
   }, [call.remoteStream])
 
   if (call.status !== 'calling' && call.status !== 'active') return null
