@@ -5,6 +5,8 @@ const DEV = (import.meta as { env?: { DEV?: boolean } }).env?.DEV === true
 const log = DEV
   ? (scope: string, ...args: unknown[]) => console.log(`[callout:${scope}]`, ...args)
   : () => {}
+// Call-layer logs always run so we can diagnose prod one-way audio reports
+const callLog = (scope: string, ...args: unknown[]) => console.log(`[callout:${scope}]`, ...args)
 
 const env = (import.meta as { env?: Record<string, string> }).env ?? {}
 
@@ -370,7 +372,10 @@ export class ConnectionManager {
         break
       case 'call-sdp-answer': {
         const cp = this.callPeers.get(fromId)
-        if (cp) await cp.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+        if (cp) {
+          await cp.setRemoteDescription(new RTCSessionDescription(msg.sdp))
+          callLog('call', `answer applied from ${fromId}. transceivers=`, cp.getTransceivers().map(t => ({ mid: t.mid, direction: t.direction, currentDirection: t.currentDirection, senderHasTrack: !!t.sender.track, receiverTrackId: t.receiver.track?.id })))
+        }
         break
       }
       case 'call-accepted':
@@ -523,10 +528,12 @@ export class ConnectionManager {
     catch { return }
 
     const cp = this.createCallPeer(targetId, localStream)
+    callLog('call', `initiate ${targetId}: local tracks=`, localStream.getAudioTracks().map(t => ({ id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState })))
     localStream.getTracks().forEach((t) => cp.addTrack(t, localStream))
 
     const offer = await cp.createOffer()
     await cp.setLocalDescription(offer)
+    callLog('call', `initiate ${targetId}: offer set. transceivers=`, cp.getTransceivers().map(t => ({ mid: t.mid, direction: t.direction, senderHasTrack: !!t.sender.track })))
 
     this.dcSend(dc, { type: 'call-invite' })
     this.dcSend(dc, { type: 'call-sdp-offer', sdp: offer })
@@ -547,24 +554,25 @@ export class ConnectionManager {
     catch { this.rejectCall(); return }
 
     const cp = this.createCallPeer(contactId, localStream)
+    callLog('call', `accept ${contactId}: local tracks=`, localStream.getAudioTracks().map(t => ({ id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState })))
+    localStream.getTracks().forEach((t) => cp.addTrack(t, localStream))
 
-    // setRemoteDescription BEFORE addTrack so the offer's transceiver is reused by addTrack
     await cp.setRemoteDescription(new RTCSessionDescription(pendingOffer))
     this.pendingOffers.delete(contactId)
-
-    localStream.getTracks().forEach((t) => cp.addTrack(t, localStream))
 
     // Drain ICE candidates that arrived while we were ringing
     const bufferedIce = this.pendingCallIce.get(contactId)
     if (bufferedIce) {
+      callLog('call', `accept ${contactId}: draining ${bufferedIce.length} buffered ICE candidates`)
       for (const c of bufferedIce) {
-        try { await cp.addIceCandidate(new RTCIceCandidate(c)) } catch { /* stale */ }
+        try { await cp.addIceCandidate(new RTCIceCandidate(c)) } catch (err) { callLog('call', 'buffered ICE addIceCandidate failed', err) }
       }
       this.pendingCallIce.delete(contactId)
     }
 
     const answer = await cp.createAnswer()
     await cp.setLocalDescription(answer)
+    callLog('call', `accept ${contactId}: answer set. transceivers=`, cp.getTransceivers().map(t => ({ mid: t.mid, direction: t.direction, currentDirection: t.currentDirection, senderHasTrack: !!t.sender.track, receiverTrackId: t.receiver.track?.id })))
 
     const dc = this.channels.get(contactId)
     if (!dc || dc.readyState !== 'open') { this.teardownCall(contactId); return }
@@ -604,21 +612,71 @@ export class ConnectionManager {
     this.localStreams.set(targetId, localStream)
 
     cp.onicecandidate = (e) => {
-      if (!e.candidate) return
+      if (!e.candidate) {
+        callLog('call', `ICE gathering complete for ${targetId}`)
+        return
+      }
+      callLog('call', `ICE candidate → ${targetId}: ${e.candidate.type} ${e.candidate.protocol} ${e.candidate.address ?? '?'}:${e.candidate.port ?? '?'}`)
       const dc = this.channels.get(targetId)
       if (dc?.readyState === 'open') this.dcSend(dc, { type: 'call-ice', candidate: e.candidate.toJSON() })
     }
     cp.ontrack = (e) => {
-      useAppStore.getState().setCallState({ remoteStream: e.streams[0] ?? new MediaStream([e.track]) })
+      const track = e.track
+      const stream = e.streams[0] ?? new MediaStream([track])
+      callLog('call', `ontrack fired from ${targetId}: kind=${track.kind} id=${track.id} muted=${track.muted} readyState=${track.readyState} streams=${e.streams.length}`)
+      track.onmute = () => callLog('call', `remote track ${track.id} from ${targetId}: MUTED`)
+      track.onunmute = () => callLog('call', `remote track ${track.id} from ${targetId}: UNMUTED`)
+      track.onended = () => callLog('call', `remote track ${track.id} from ${targetId}: ENDED`)
+      useAppStore.getState().setCallState({ remoteStream: stream })
+    }
+    cp.oniceconnectionstatechange = () => {
+      callLog('call', `ICE connection state for ${targetId}: ${cp.iceConnectionState}`)
     }
     cp.onconnectionstatechange = () => {
       const s = cp.connectionState
+      callLog('call', `connection state for ${targetId}: ${s}`)
+      if (s === 'connected') {
+        // Log selected candidate pair once connected
+        void cp.getStats().then((stats) => {
+          stats.forEach((r) => {
+            if (r.type === 'candidate-pair' && (r as { nominated?: boolean; selected?: boolean }).nominated) {
+              callLog('call', `selected pair for ${targetId}:`, { local: r.localCandidateId, remote: r.remoteCandidateId, state: r.state })
+            }
+          })
+        })
+        // Start RTP stats polling to confirm both directions are flowing
+        this.startCallStatsPolling(targetId, cp)
+      }
       if (s === 'disconnected' || s === 'failed' || s === 'closed') this.teardownCall(targetId)
     }
     return cp
   }
 
+  private callStatsTimers = new Map<string, ReturnType<typeof setInterval>>()
+  private startCallStatsPolling(targetId: string, cp: RTCPeerConnection): void {
+    if (this.callStatsTimers.has(targetId)) return
+    const id = setInterval(async () => {
+      if (cp.connectionState !== 'connected') return
+      const stats = await cp.getStats()
+      let outbound: { packetsSent?: number; bytesSent?: number } = {}
+      let inbound: { packetsReceived?: number; bytesReceived?: number; packetsLost?: number } = {}
+      stats.forEach((r) => {
+        if (r.type === 'outbound-rtp' && (r as { kind?: string }).kind === 'audio') {
+          outbound = r as typeof outbound
+        }
+        if (r.type === 'inbound-rtp' && (r as { kind?: string }).kind === 'audio') {
+          inbound = r as typeof inbound
+        }
+      })
+      callLog('call', `RTP stats ${targetId}: sent=${outbound.packetsSent ?? 0}pkts/${outbound.bytesSent ?? 0}B  recv=${inbound.packetsReceived ?? 0}pkts/${inbound.bytesReceived ?? 0}B lost=${inbound.packetsLost ?? 0}`)
+    }, 2000)
+    this.callStatsTimers.set(targetId, id)
+  }
+
   private teardownCall(contactId: string) {
+    callLog('call', `teardown ${contactId}`)
+    const timer = this.callStatsTimers.get(contactId)
+    if (timer) { clearInterval(timer); this.callStatsTimers.delete(contactId) }
     const cp = this.callPeers.get(contactId)
     if (cp) { cp.close(); this.callPeers.delete(contactId) }
     const stream = this.localStreams.get(contactId)
