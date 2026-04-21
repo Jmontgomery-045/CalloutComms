@@ -39,17 +39,21 @@ export default function ActiveCallBar() {
     return () => events.forEach(e => el.removeEventListener(e, logState))
   }, [call.remoteStream])
 
-  if (call.status !== 'calling' && call.status !== 'active') return null
-
+  // Always render the <audio> element so the effect above can find it via ref —
+  // the callee reaches 'active' only AFTER ontrack has already fired, so by
+  // the time a status gate would mount the element, remoteStream has already
+  // "changed" and the effect wouldn't re-run. Kept at the top of a fragment so
+  // its tree position is stable regardless of whether the UI bar renders.
+  const showBar = call.status === 'calling' || call.status === 'active'
   const contact = contacts.find((c) => c.user_id === call.contactId)
   const cm = getConnectionManager()
   const name = contact?.nickname ?? call.contactId?.slice(0, 10) + '…'
 
   return (
-    <div style={styles.bar}>
-      {/* Hidden audio element — plays remote stream */}
+    <>
       <audio ref={audioRef} autoPlay playsInline style={{ display: 'none' }} />
-
+      {showBar && (
+        <div style={styles.bar}>
       <div style={styles.left}>
         <span style={{ ...styles.dot, background: call.status === 'active' ? 'var(--online)' : '#f59e0b' }} />
         <span style={styles.name}>{name}</span>
@@ -76,7 +80,9 @@ export default function ActiveCallBar() {
           ✕ End
         </button>
       </div>
-    </div>
+        </div>
+      )}
+    </>
   )
 }
 
