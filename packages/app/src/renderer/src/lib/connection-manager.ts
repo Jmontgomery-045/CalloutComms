@@ -68,6 +68,7 @@ export class ConnectionManager {
   private callPeers = new Map<string, RTCPeerConnection>()
   private localStreams = new Map<string, MediaStream>()
   private pendingOffers = new Map<string, RTCSessionDescriptionInit>()
+  private pendingCallIce = new Map<string, RTCIceCandidateInit[]>()
 
   // Group call layer
   private groupId: string | null = null
@@ -379,7 +380,14 @@ export class ConnectionManager {
       case 'call-ended':    this.teardownCall(fromId); break
       case 'call-ice': {
         const cp = this.callPeers.get(fromId)
-        if (cp) try { await cp.addIceCandidate(new RTCIceCandidate(msg.candidate)) } catch { /* stale */ }
+        if (cp) {
+          try { await cp.addIceCandidate(new RTCIceCandidate(msg.candidate)) } catch { /* stale */ }
+        } else {
+          // Caller's candidates arrive while we're still ringing — buffer until acceptCall creates the peer
+          const buf = this.pendingCallIce.get(fromId) ?? []
+          buf.push(msg.candidate)
+          this.pendingCallIce.set(fromId, buf)
+        }
         break
       }
 
@@ -539,10 +547,21 @@ export class ConnectionManager {
     catch { this.rejectCall(); return }
 
     const cp = this.createCallPeer(contactId, localStream)
-    localStream.getTracks().forEach((t) => cp.addTrack(t, localStream))
 
+    // setRemoteDescription BEFORE addTrack so the offer's transceiver is reused by addTrack
     await cp.setRemoteDescription(new RTCSessionDescription(pendingOffer))
     this.pendingOffers.delete(contactId)
+
+    localStream.getTracks().forEach((t) => cp.addTrack(t, localStream))
+
+    // Drain ICE candidates that arrived while we were ringing
+    const bufferedIce = this.pendingCallIce.get(contactId)
+    if (bufferedIce) {
+      for (const c of bufferedIce) {
+        try { await cp.addIceCandidate(new RTCIceCandidate(c)) } catch { /* stale */ }
+      }
+      this.pendingCallIce.delete(contactId)
+    }
 
     const answer = await cp.createAnswer()
     await cp.setLocalDescription(answer)
@@ -605,6 +624,7 @@ export class ConnectionManager {
     const stream = this.localStreams.get(contactId)
     if (stream) { stream.getTracks().forEach((t) => t.stop()); this.localStreams.delete(contactId) }
     this.pendingOffers.delete(contactId)
+    this.pendingCallIce.delete(contactId)
     useAppStore.getState().resetCall()
   }
 
