@@ -17,6 +17,7 @@ export type Contact = {
   profile_pic_path: string | null
   profile_pic_hash: string | null
   blocked: number
+  pending: number
   added_at: number
 }
 
@@ -29,6 +30,14 @@ export type Message = {
   read: number
   reaction: string | null
 }
+
+export type ExportOptions = {
+  includeProfile: boolean
+  includeProfilePic: boolean
+  includeContacts: boolean
+  includeMessages: boolean
+}
+
 
 const api = {
   win: {
@@ -54,8 +63,27 @@ const api = {
     updateProfile: (id: string, displayName: string, status: string): Promise<void> =>
       ipcRenderer.invoke('identity:update-profile', { id, displayName, status }),
 
-    export: (profileId: string, password: string): Promise<{ success: boolean; path?: string }> =>
-      ipcRenderer.invoke('identity:export', { profileId, password }),
+    export: (
+      profileId: string,
+      password: string,
+      options?: ExportOptions
+    ): Promise<{ success: boolean; path?: string }> =>
+      ipcRenderer.invoke('identity:export', { profileId, password, options }),
+
+    pickImportFile: (): Promise<
+      { ok: true; content: string; fileName: string } | { ok: false; error?: string }
+    > => ipcRenderer.invoke('identity:pick-import-file'),
+
+    import: (params: {
+      fileContent: string
+      password: string
+    }): Promise<
+      | { success: true; profileId: string; contactsImported: number; messagesImported: number }
+      | { success: false; error: 'bad-password' | 'corrupt' | 'unsupported-version' }
+    > => ipcRenderer.invoke('identity:import', params),
+
+    reset: (profileId: string): Promise<{ success: boolean }> =>
+      ipcRenderer.invoke('identity:reset', profileId),
 
     saveCroppedProfilePic: (profileId: string, dataUrl: string): Promise<{ filename: string; hash: string }> =>
       ipcRenderer.invoke('identity:save-cropped-profile-pic', { profileId, dataUrl }),
@@ -88,6 +116,9 @@ const api = {
 
     block: (profileId: string, userId: string): Promise<void> =>
       ipcRenderer.invoke('contacts:block', { profileId, userId }),
+
+    clearPending: (profileId: string, userId: string): Promise<void> =>
+      ipcRenderer.invoke('contacts:clear-pending', { profileId, userId }),
 
     saveProfilePic: (params: { profileId: string; userId: string; dataUrl: string }): Promise<{ filename: string; hash: string }> =>
       ipcRenderer.invoke('contacts:save-profile-pic', params),

@@ -1,7 +1,7 @@
 import { app, BrowserWindow, shell, nativeImage, ipcMain, protocol } from 'electron'
 import { join, normalize } from 'path'
 import { autoUpdater } from 'electron-updater'
-import sodium from 'libsodium-wrappers'
+import sodium from 'libsodium-wrappers-sumo'
 import { initDb } from './db'
 import { registerIpcHandlers } from './ipc'
 
