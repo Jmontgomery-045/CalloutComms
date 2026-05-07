@@ -108,6 +108,7 @@ export async function initDb(): Promise<void> {
       profile_pic_hash TEXT,
       public_key   TEXT    NOT NULL,
       blocked      INTEGER NOT NULL DEFAULT 0,
+      pending      INTEGER NOT NULL DEFAULT 0,
       added_at     INTEGER NOT NULL,
       UNIQUE(profile_id, user_id)
     );
@@ -130,6 +131,15 @@ export async function initDb(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_contacts_profile
       ON contacts(profile_id);
   `)
+
+  // Migration: existing installs predating the import flow won't have the
+  // `pending` column. SQLite has no IF NOT EXISTS for ADD COLUMN, so we
+  // attempt it and ignore the duplicate-column error.
+  try {
+    sqlDb.run('ALTER TABLE contacts ADD COLUMN pending INTEGER NOT NULL DEFAULT 0')
+  } catch {
+    // already migrated
+  }
 
   // Save the freshly-created schema to disk
   persist()

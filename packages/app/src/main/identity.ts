@@ -1,4 +1,4 @@
-import sodium from 'libsodium-wrappers'
+import sodium from 'libsodium-wrappers-sumo'
 import { getDb } from './db'
 
 // Bitcoin/IPFS base58 alphabet

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store/app'
 import AvatarCropModal from './AvatarCropModal'
+import ResetProfileModal from './ResetProfileModal'
 import { getConnectionManager } from '../lib/connection-manager'
 
 const STATUS_PRESETS = ['Available', 'Busy', 'Away']
@@ -8,6 +9,8 @@ const STATUS_PRESETS = ['Available', 'Busy', 'Away']
 export default function SettingsPanel() {
   const activeProfile = useAppStore((s) => s.activeProfile)
   const setActiveProfile = useAppStore((s) => s.setActiveProfile)
+  const setProfiles = useAppStore((s) => s.setProfiles)
+  const setContacts = useAppStore((s) => s.setContacts)
 
   const [displayName, setDisplayName] = useState(activeProfile?.displayName ?? '')
   const [status, setStatus] = useState(activeProfile?.status ?? '')
@@ -17,6 +20,22 @@ export default function SettingsPanel() {
   const [exportPassword, setExportPassword] = useState('')
   const [exporting, setExporting] = useState(false)
   const [exportMsg, setExportMsg] = useState('')
+  const [exportOptions, setExportOptions] = useState({
+    includeProfile: true,
+    includeProfilePic: false,
+    includeContacts: true,
+    includeMessages: false,
+  })
+
+  // Import flow
+  const [importFile, setImportFile] = useState<{ content: string; name: string } | null>(null)
+  const [importPassword, setImportPassword] = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
+
+  // Reset flow
+  const [resetOpen, setResetOpen] = useState(false)
+  const exportPasswordRef = useRef<HTMLInputElement>(null)
 
   const [readReceipts, setReadReceipts] = useState(
     () => localStorage.getItem('pref:readReceipts') !== 'false'
@@ -94,7 +113,11 @@ export default function SettingsPanel() {
     if (!exportPassword) return
     setExporting(true)
     setExportMsg('')
-    const result = await window.api.identity.export(activeProfile!.id, exportPassword)
+    const result = await window.api.identity.export(
+      activeProfile!.id,
+      exportPassword,
+      exportOptions
+    )
     setExporting(false)
     if (result.success) {
       setExportMsg(`Saved to ${result.path}`)
@@ -107,6 +130,53 @@ export default function SettingsPanel() {
   function toggleReadReceipts(val: boolean) {
     setReadReceipts(val)
     localStorage.setItem('pref:readReceipts', String(val))
+  }
+
+  // ── Import ────────────────────────────────────────────────────────────────────
+
+  async function chooseImportFile() {
+    const picked = await window.api.identity.pickImportFile()
+    if (!picked.ok) return
+    setImportFile({ content: picked.content, name: picked.fileName })
+    setImportPassword('')
+    setImportMsg('')
+  }
+
+  async function runImport() {
+    if (!importFile || !importPassword) return
+    setImporting(true)
+    setImportMsg('')
+    const result = await window.api.identity.import({
+      fileContent: importFile.content,
+      password: importPassword,
+    })
+    setImporting(false)
+
+    if (result.success) {
+      setImportMsg(
+        `Imported as a new identity. ${result.contactsImported} contacts (pending), ` +
+          `${result.messagesImported} messages restored.`
+      )
+      setImportFile(null)
+      setImportPassword('')
+      // Refresh store: switch to the freshly-created profile.
+      const profiles = await window.api.identity.getProfiles()
+      setProfiles(profiles)
+      const newProfile = profiles.find((p) => p.id === result.profileId)
+      if (newProfile) {
+        setActiveProfile(newProfile)
+        const contacts = await window.api.contacts.get(newProfile.id)
+        setContacts(contacts)
+      }
+      return
+    }
+
+    const messages: Record<string, string> = {
+      'bad-password': 'Wrong password.',
+      corrupt: 'File is corrupt or not a Callout backup.',
+      'unsupported-version': 'Backup file uses an unsupported version.',
+    }
+    setImportMsg(messages[result.error] ?? 'Import failed.')
   }
 
   return (
@@ -231,13 +301,40 @@ export default function SettingsPanel() {
             Share this with contacts so they can add you. Your private key never leaves this device.
           </p>
 
-          <label style={{ ...styles.label, marginTop: 16 }}>Export identity backup</label>
+          <label style={{ ...styles.label, marginTop: 16 }}>Export Callout backup</label>
           <p style={styles.hint}>
-            Encrypts your key pair with a password and saves it as a JSON file. Keep it safe — anyone
-            with your backup file and password can impersonate you.
+            Encrypts your profile data, contacts, and messages with a password and saves it as a
+            JSON file. Your keypair is <strong>not</strong> included — importing on another install
+            generates a fresh ID, and your contacts will appear as pending until they accept a new
+            request from you.
           </p>
+
+          <div style={styles.exportSections}>
+            <ExportToggle
+              label="Profile (display name + status)"
+              checked={exportOptions.includeProfile}
+              onChange={(v) => setExportOptions((o) => ({ ...o, includeProfile: v }))}
+            />
+            <ExportToggle
+              label="Contacts"
+              checked={exportOptions.includeContacts}
+              onChange={(v) => setExportOptions((o) => ({ ...o, includeContacts: v }))}
+            />
+            <ExportToggle
+              label="Profile picture"
+              checked={exportOptions.includeProfilePic}
+              onChange={(v) => setExportOptions((o) => ({ ...o, includeProfilePic: v }))}
+            />
+            <ExportToggle
+              label="Message history"
+              checked={exportOptions.includeMessages}
+              onChange={(v) => setExportOptions((o) => ({ ...o, includeMessages: v }))}
+            />
+          </div>
+
           <div style={styles.exportRow}>
             <input
+              ref={exportPasswordRef}
               style={{ ...styles.input, flex: 1, marginTop: 0 }}
               type="password"
               placeholder="Backup password"
@@ -253,6 +350,70 @@ export default function SettingsPanel() {
             </button>
           </div>
           {exportMsg && <p style={styles.exportMsg}>{exportMsg}</p>}
+
+          {/* Import Callout backup */}
+          <label style={{ ...styles.label, marginTop: 24 }}>Import Callout backup</label>
+          <p style={styles.hint}>
+            Imports the data from a previous backup into a brand-new identity. You'll get a fresh
+            ID — your contacts arrive as pending and you'll need to send each one a request from
+            the sidebar.
+          </p>
+
+          {!importFile && (
+            <button style={styles.secondaryBtn} onClick={chooseImportFile}>
+              Choose backup file…
+            </button>
+          )}
+
+          {importFile && (
+            <div style={styles.importBox}>
+              <div style={styles.importFileRow}>
+                <span style={styles.importFileName}>{importFile.name}</span>
+                <button
+                  style={styles.linkBtn}
+                  onClick={() => {
+                    setImportFile(null)
+                    setImportPassword('')
+                    setImportMsg('')
+                  }}
+                >
+                  Choose different file
+                </button>
+              </div>
+
+              <div style={styles.exportRow}>
+                <input
+                  style={{ ...styles.input, flex: 1, marginTop: 0 }}
+                  type="password"
+                  placeholder="Backup password"
+                  value={importPassword}
+                  onChange={(e) => setImportPassword(e.target.value)}
+                />
+                <button
+                  style={{
+                    ...styles.primaryBtn,
+                    opacity: importPassword && !importing ? 1 : 0.4,
+                  }}
+                  disabled={!importPassword || importing}
+                  onClick={runImport}
+                >
+                  {importing ? 'Importing…' : 'Import'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {importMsg && <p style={styles.exportMsg}>{importMsg}</p>}
+
+          {/* Reset profile (destructive) */}
+          <label style={{ ...styles.label, marginTop: 24 }}>Reset profile</label>
+          <p style={styles.hint}>
+            Wipe your keypair, contacts, and messages, and start over with a new identity.
+            Existing contacts will see your old ID as a dead entry.
+          </p>
+          <button style={styles.dangerBtn} onClick={() => setResetOpen(true)}>
+            Reset me…
+          </button>
         </section>
 
         {/* ── About ───────────────────────────────────────── */}
@@ -286,7 +447,52 @@ export default function SettingsPanel() {
           onCancel={() => setCropSrc(null)}
         />
       )}
+
+      {resetOpen && activeProfile && (
+        <ResetProfileModal
+          profile={activeProfile}
+          onCancel={() => setResetOpen(false)}
+          onExportFirst={() => {
+            setResetOpen(false)
+            // Defer focus so the modal close animation doesn't steal it back
+            setTimeout(() => {
+              exportPasswordRef.current?.focus()
+              exportPasswordRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }, 0)
+          }}
+          onConfirmed={async () => {
+            await window.api.identity.reset(activeProfile.id)
+            // Tear the local state down so App routes back to FirstLaunch.
+            setResetOpen(false)
+            setProfiles([])
+            setContacts([])
+            setActiveProfile(null)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+function ExportToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string
+  checked: boolean
+  onChange(v: boolean): void
+}) {
+  return (
+    <label style={styles.exportToggleRow}>
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        style={styles.exportToggleCheckbox}
+      />
+      <span style={styles.exportToggleLabel}>{label}</span>
+    </label>
   )
 }
 
@@ -533,11 +739,98 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     marginTop: 4,
   },
+  exportSections: {
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    columnGap: 18,
+    rowGap: 6,
+    margin: '8px 0 12px',
+    padding: '10px 12px',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: 'var(--bg-secondary)',
+  },
+  exportToggleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    userSelect: 'none',
+  },
+  exportToggleCheckbox: {
+    accentColor: 'var(--accent)',
+    cursor: 'pointer',
+  },
+  exportToggleLabel: {
+    fontSize: 13,
+    color: 'var(--text-primary)',
+  },
   exportMsg: {
     fontSize: 12,
     color: 'var(--text-muted)',
     marginTop: 2,
     wordBreak: 'break-all',
+  },
+  importBox: {
+    marginTop: 6,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+  },
+  importFileRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  importFileName: {
+    fontSize: 13,
+    color: 'var(--text-primary)',
+    fontFamily: 'monospace',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+  },
+  linkBtn: {
+    background: 'transparent',
+    border: 'none',
+    color: 'var(--accent)',
+    cursor: 'pointer',
+    fontSize: 12,
+    padding: 0,
+  },
+  conflictBox: {
+    marginTop: 4,
+    padding: '10px 12px',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: 'var(--bg-secondary)',
+  },
+  conflictBtnRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+    marginTop: 8,
+  },
+  secondaryBtn: {
+    padding: '8px 14px',
+    border: '1px solid var(--border)',
+    borderRadius: 6,
+    background: 'transparent',
+    color: 'var(--text-primary)',
+    cursor: 'pointer',
+    fontSize: 13,
+    textAlign: 'left',
+  },
+  dangerBtn: {
+    padding: '8px 14px',
+    border: '1px solid #c4423b',
+    borderRadius: 6,
+    background: 'transparent',
+    color: '#e85a52',
+    cursor: 'pointer',
+    fontSize: 13,
+    textAlign: 'left',
   },
   toggleRow: {
     display: 'flex',

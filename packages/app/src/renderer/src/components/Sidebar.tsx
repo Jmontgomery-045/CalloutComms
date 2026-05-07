@@ -4,6 +4,8 @@ import { getConnectionManager } from '../lib/connection-manager'
 import Identicon from './Identicon'
 import AddContactModal from './AddContactModal'
 
+const PENDING_REQUEST_MESSAGE = "Hi — I imported your contact from a backup. Can we reconnect?"
+
 type Props = { onSettings(): void }
 
 export default function Sidebar({ onSettings }: Props) {
@@ -23,8 +25,9 @@ export default function Sidebar({ onSettings }: Props) {
     setTimeout(() => setCopied(false), 1500)
   }
 
-  const online = contacts.filter((c) => c.online)
-  const offline = contacts.filter((c) => !c.online)
+  const pending = contacts.filter((c) => c.pending)
+  const online = contacts.filter((c) => c.online && !c.pending)
+  const offline = contacts.filter((c) => !c.online && !c.pending)
 
   return (
     <>
@@ -112,6 +115,21 @@ export default function Sidebar({ onSettings }: Props) {
               ))}
             </>
           )}
+
+          {pending.length > 0 && (
+            <>
+              <div style={styles.groupLabel}>Pending — {pending.length}</div>
+              {pending.map((c) => (
+                <ContactRow
+                  key={c.user_id}
+                  contact={c}
+                  selected={selectedContactId === c.user_id}
+                  unread={unreadCounts[c.user_id] ?? 0}
+                  onSelect={() => selectContact(c.user_id)}
+                />
+              ))}
+            </>
+          )}
         </div>
       </aside>
 
@@ -133,8 +151,13 @@ function ContactRow({
   unread: number
   onSelect(): void
 }) {
+  const activeProfile = useAppStore((s) => s.activeProfile)
+  const setContacts = useAppStore((s) => s.setContacts)
   const [hovered, setHovered] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
+  const [requesting, setRequesting] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+
+  const isPending = contact.pending === 1
 
   function handleRefresh(e: React.MouseEvent) {
     e.stopPropagation()
@@ -144,11 +167,31 @@ function ContactRow({
     setTimeout(() => setRefreshing(false), 2000)
   }
 
+  async function handleRequest(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (requesting === 'sending' || !activeProfile) return
+    const cm = getConnectionManager()
+    if (!cm) return
+
+    setRequesting('sending')
+    try {
+      await cm.sendContactRequest(contact.user_id, PENDING_REQUEST_MESSAGE)
+      await window.api.contacts.clearPending(activeProfile.id, contact.user_id)
+      const fresh = await window.api.contacts.get(activeProfile.id)
+      setContacts(fresh)
+      setRequesting('sent')
+    } catch {
+      setRequesting('error')
+      setTimeout(() => setRequesting('idle'), 3000)
+    }
+  }
+
   return (
     <button
       style={{
         ...styles.contactRow,
         background: selected ? 'var(--bg-hover)' : 'transparent',
+        opacity: isPending ? 0.55 : 1,
       }}
       onClick={onSelect}
       onMouseEnter={() => setHovered(true)}
@@ -158,17 +201,21 @@ function ContactRow({
         {contact.profile_pic_path ? (
           <img
             src={`callout-file://${encodeURIComponent(contact.profile_pic_path)}`}
-            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', display: 'block' }}
+            style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover', display: 'block', filter: isPending ? 'grayscale(1)' : undefined }}
           />
         ) : (
-          <Identicon userId={contact.user_id} size={32} />
+          <div style={{ filter: isPending ? 'grayscale(1)' : undefined }}>
+            <Identicon userId={contact.user_id} size={32} />
+          </div>
         )}
-        <span
-          style={{
-            ...styles.onlineDot,
-            background: contact.online ? 'var(--online)' : 'var(--offline)',
-          }}
-        />
+        {!isPending && (
+          <span
+            style={{
+              ...styles.onlineDot,
+              background: contact.online ? 'var(--online)' : 'var(--offline)',
+            }}
+          />
+        )}
       </div>
       <div style={styles.contactInfo}>
         <span style={{
@@ -179,19 +226,39 @@ function ContactRow({
           {contact.nickname}
         </span>
         <span style={styles.contactStatus}>
-          {contact.status
-            ? contact.status
-            : contact.online
-              ? 'Online'
-              : 'Offline'}
+          {isPending
+            ? 'Pending — needs reconnect'
+            : contact.status
+              ? contact.status
+              : contact.online
+                ? 'Online'
+                : 'Offline'}
         </span>
       </div>
-      {unread > 0 && !hovered && (
+
+      {isPending && (
+        <button
+          style={{
+            ...styles.requestBtn,
+            opacity: requesting === 'sending' ? 0.5 : 1,
+          }}
+          onClick={handleRequest}
+          disabled={requesting === 'sending' || requesting === 'sent'}
+          title="Send a contact request from your new identity"
+        >
+          {requesting === 'sending' ? 'Sending…'
+            : requesting === 'sent' ? 'Sent ✓'
+            : requesting === 'error' ? 'Retry'
+            : 'Request'}
+        </button>
+      )}
+
+      {!isPending && unread > 0 && !hovered && (
         <span style={styles.unreadBadge}>
           {unread > 99 ? '99+' : unread}
         </span>
       )}
-      {hovered && (
+      {!isPending && hovered && (
         <span
           style={{
             ...styles.refreshBtn,
@@ -377,5 +444,16 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  requestBtn: {
+    flexShrink: 0,
+    fontSize: 11,
+    fontWeight: 600,
+    color: '#fff',
+    background: 'var(--accent)',
+    border: 'none',
+    borderRadius: 12,
+    padding: '4px 10px',
+    cursor: 'pointer',
   },
 }

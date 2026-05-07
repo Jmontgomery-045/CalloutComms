@@ -17,6 +17,8 @@ export type Contact = {
   profile_pic_path: string | null
   profile_pic_hash: string | null
   online: boolean
+  /** 1 = imported from a backup, contact doesn't yet know our new ID */
+  pending: number
 }
 
 export type Message = {
@@ -134,6 +136,7 @@ export const useAppStore = create<AppState>((set) => ({
     set((s) => ({
       contacts: rawContacts.map((c) => ({
         ...c,
+        pending: c.pending ?? 0,
         online: s.contacts.find((x) => x.user_id === c.user_id)?.online ?? false,
       })),
     })),
